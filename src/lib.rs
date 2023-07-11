@@ -1,8 +1,17 @@
+#![feature(proc_macro_diagnostic)]
+
 use proc_macro::TokenStream;
 use quote::{quote, quote_spanned};
 use syn::parse::{Parse, ParseStream, Result};
 use syn::spanned::Spanned;
 use syn::{parse_macro_input, Ident, Token, Type, Visibility, LitStr};
+
+macro_rules! parse_type {
+    ($ty:ty, $var:item) => {
+        let val = $var.parse::<$ty>();
+        quote!{ val }
+    }
+}
 
 /// Parses the following syntax:
 ///
@@ -44,8 +53,14 @@ pub fn env_parse(input: TokenStream) -> TokenStream {
         value,
     } = parse_macro_input!(input as EnvParse);
 
-    let _assert_parseable = quote_spanned! { ty.span()=>
-        struct _AssertParse where #ty: std::str::FromStr;
+    let assert_parseable = quote_spanned!{ty.span()=>
+        struct _AssertParseable where #ty: std::str::FromStr {}
+    };
+
+    let type_name = format!("{:?}", ty);
+    let const_value = match type_name.as_str() {
+        "u8" => parse_type!(u32, value.value()),
+        "i32" => parse_type!(i32, value.value()),
     };
 
     let const_value = quote!{
@@ -53,6 +68,7 @@ pub fn env_parse(input: TokenStream) -> TokenStream {
     };
 
     let expanded = quote! {
+        #assert_parseable
         #visibility const #name: #ty = #const_value;
     };
 
