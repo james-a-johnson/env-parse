@@ -1,16 +1,17 @@
 #![feature(proc_macro_diagnostic)]
 
+use std::env::var;
 use proc_macro::TokenStream;
-use quote::{quote, quote_spanned};
+use quote::quote;
 use syn::parse::{Parse, ParseStream, Result};
 use syn::spanned::Spanned;
 use syn::{parse_macro_input, Ident, Token, Type, Visibility, LitStr};
 
 macro_rules! parse_type {
-    ($ty:ty, $var:item) => {
-        let val = $var.parse::<$ty>();
-        quote!{ val }
-    }
+    ($ty:ty, $var:expr) => {{
+        let val = $var.parse::<$ty>().unwrap();
+        quote!{ #val }
+    }}
 }
 
 /// Parses the following syntax:
@@ -53,22 +54,53 @@ pub fn env_parse(input: TokenStream) -> TokenStream {
         value,
     } = parse_macro_input!(input as EnvParse);
 
-    let assert_parseable = quote_spanned!{ty.span()=>
-        struct _AssertParseable where #ty: std::str::FromStr {}
+    let env_var = match var(value.value()) {
+        Ok(s) => s,
+        Err(_) => {
+            value.span().unwrap().error("Couldn't find variable in environment").emit();
+            return TokenStream::new();
+        },
     };
-
-    let type_name = format!("{:?}", ty);
+    let type_name = ty.span().source_text().unwrap();
+    println!("{:?}", type_name);
     let const_value = match type_name.as_str() {
-        "u8" => parse_type!(u32, value.value()),
-        "i32" => parse_type!(i32, value.value()),
-    };
-
-    let const_value = quote!{
-        #value::parse::<#ty>().unwrap()
+        "u8" => {
+            parse_type!(u8, env_var)
+        },
+        "i8" => {
+            parse_type!(i8, env_var)
+        },
+        "u16" => {
+            parse_type!(u16, env_var)
+        },
+        "i16" => {
+            parse_type!(i16, env_var)
+        },
+        "u32" => {
+            parse_type!(u32, env_var)
+        },
+        "i32" => {
+            parse_type!(i32, env_var)
+        },
+        "u64" => {
+            parse_type!(u64, env_var)
+        },
+        "i64" => {
+            parse_type!(i64, env_var)
+        },
+        "f32" => {
+            parse_type!(f32, env_var)
+        },
+        "f64" => {
+            parse_type!(f64, env_var)
+        },
+        _ => {
+            ty.span().unwrap().error("Unsupported type").emit();
+            return TokenStream::new();
+        }
     };
 
     let expanded = quote! {
-        #assert_parseable
         #visibility const #name: #ty = #const_value;
     };
 
